@@ -95,6 +95,9 @@ class TektronixDPO7000xx(VisaInstrument):
             TektronixDPOTrigger(self, "delayed_trigger", delayed_trigger=True),
         )
         """Instrument module delayed_trigger"""
+        self.acquisition: TektronixDPOAcquisition = self.add_submodule(
+            "acquisition", TektronixDPOAcquisition(self, "acquisition")
+        )
 
         measurement_list = ChannelList(self, "measurement", TektronixDPOMeasurement)
         for measurement_number in range(1, self.number_of_measurements):
@@ -677,7 +680,7 @@ class TektronixDPOAcquisition(InstrumentChannel):
 
     def __init__(
         self,
-        parent: Instrument | InstrumentChannel,
+        parent: Instrument,
         name: str,
         **kwargs: "Unpack[InstrumentBaseKWArgs]",
     ) -> None:
@@ -686,8 +689,16 @@ class TektronixDPOAcquisition(InstrumentChannel):
         self.mode: Parameter = self.add_parameter(
             "mode",
             get_cmd="ACQuire:MODe?",
-            set_cmd="ACQuire:MODe {}",
-            vals=Enum("sample", "peakdetect", "average", "high_res","average", "wfmdb", "envelope"),
+            set_cmd=f"ACQuire:MODe {{}}",
+            vals=Enum(
+                "sample",
+                "peakdetect",
+                "average",
+                "high_res",
+                "average",
+                "wfmdb",
+                "envelope",
+            ),
             get_parser=str.lower,
         )
         """Parameter mode"""
@@ -695,14 +706,14 @@ class TektronixDPOAcquisition(InstrumentChannel):
         self.state: Parameter = self.add_parameter(
             "state",
             get_cmd="ACQuire:STATE?",
-            set_cmd="ACQuire:STATE {}",
-            val_mapping=Enum(
+            set_cmd=f"ACQuire:STATE {{}}",
+            vals=Enum(
                 "ON",
                 "OFF",
                 "RUN",
                 "STOP",
             ),
-            get_parser=int,
+            get_parser=str.lower,
         )
         """This command starts or stops acquisitions. When state is set to ON or RUN, a
         new acquisition will be started. If the last acquisition was a single acquisition
@@ -712,8 +723,9 @@ class TektronixDPOAcquisition(InstrumentChannel):
         self.stop_after: Parameter = self.add_parameter(
             "stop_after",
             get_cmd="ACQuire:STOPAfter?",
-            set_cmd="ACQuire:STOPAfter {{}}",
+            set_cmd=f"ACQuire:STOPAfter {{}}",
             vals=Enum("SEQUENCE", "RUNSTOP"),
+            get_parser=str.lower,
         )
 
 
@@ -746,7 +758,7 @@ class TektronixDPOTrigger(InstrumentChannel):
         super().__init__(parent, name, **kwargs)
         self._identifier = "B" if delayed_trigger else "A"
 
-        trigger_types = ["edge", "logic", "pulse"]
+        trigger_types = ["EDGE", "edge", "logic", "pulse"]
         if self._identifier == "A":
             trigger_types.extend(
                 ["video", "i2c", "can", "spi", "communication", "serial", "rs232"]
@@ -759,7 +771,7 @@ class TektronixDPOTrigger(InstrumentChannel):
             vals=Enum(*trigger_types),
             get_parser=str.lower,
         )
-        """Parameter type"""
+        """Trigger type"""
 
         edge_couplings = ["ac", "dc", "hfrej", "lfrej", "noiserej"]
         if self._identifier == "B":
@@ -772,16 +784,16 @@ class TektronixDPOTrigger(InstrumentChannel):
             vals=Enum(*edge_couplings),
             get_parser=str.lower,
         )
-        """Parameter edge_coupling"""
+        """Trigger edge coupling: 'ac', 'dc', 'hfrej', 'lfrej', 'noiserej', 'atrigger'"""
 
         self.edge_slope: Parameter = self.add_parameter(
             "edge_slope",
             get_cmd=f"TRIGger:{self._identifier}:EDGE:SLOpe?",
             set_cmd=f"TRIGger:{self._identifier}:EDGE:SLOpe {{}}",
-            vals=Enum("rise", "fall", "either"),
+            vals=Enum("RISE", "rise", "FALL", "fall", "EITHER", "either"),
             get_parser=str.lower,
         )
-        """Parameter edge_slope"""
+        """Trigger edge slope: 'rise', 'fall', or 'either'"""
 
         trigger_sources = [
             f"CH{i}" for i in range(1, TektronixDPO7000xx.number_of_channels)
@@ -792,16 +804,27 @@ class TektronixDPOTrigger(InstrumentChannel):
         if self._identifier == "A":
             trigger_sources.append("line")
 
+        trigger_sources.append("AUX")
+
         self.source: Parameter = self.add_parameter(
             "source",
             get_cmd=f"TRIGger:{self._identifier}:EDGE:SOUrce?",
             set_cmd=f"TRIGger:{self._identifier}:EDGE:SOUrce {{}}",
             vals=Enum(*trigger_sources),
         )
-        """Parameter source"""
+        """Trigger source: 'CH1', 'CH2', ..., 'CH4', 'D0', 'D1', ..., 'D15', 'AUX', 'LINE'"""
+
+        self.level: Parameter = self.add_parameter(
+            "level",
+            get_cmd=f"TRIGger:{self._identifier}:LEVel?",
+            set_cmd=f"TRIGger:{self._identifier}:LEVel {{}}",
+            get_parser=float,
+            unit="V",
+        )
+        """Trigger level: The voltage level at which the trigger condition is met."""
 
     def _trigger_type(self, value: str) -> None:
-        if value != "edge":
+        if value.lower() != "edge":
             raise NotImplementedError(
                 "We currently only support the 'edge' trigger type"
             )
