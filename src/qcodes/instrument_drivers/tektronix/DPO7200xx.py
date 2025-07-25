@@ -668,6 +668,55 @@ class TektronixDPOHorizontal(InstrumentChannel):
         self.write(f"HORizontal:MODE:SCAle {value}")
 
 
+class TektronixDPOAcquisition(InstrumentChannel):
+    """
+    This submodule controls the acquisition mode of the
+    oscilloscope. It is used to set the acquisition mode
+    and the number of acquisitions.
+    """
+
+    def __init__(
+        self,
+        parent: Instrument | InstrumentChannel,
+        name: str,
+        **kwargs: "Unpack[InstrumentBaseKWArgs]",
+    ) -> None:
+        super().__init__(parent, name, **kwargs)
+
+        self.mode: Parameter = self.add_parameter(
+            "mode",
+            get_cmd="ACQuire:MODe?",
+            set_cmd="ACQuire:MODe {}",
+            vals=Enum("sample", "peakdetect", "average", "high_res","average", "wfmdb", "envelope"),
+            get_parser=str.lower,
+        )
+        """Parameter mode"""
+
+        self.state: Parameter = self.add_parameter(
+            "state",
+            get_cmd="ACQuire:STATE?",
+            set_cmd="ACQuire:STATE {}",
+            val_mapping=Enum(
+                "ON",
+                "OFF",
+                "RUN",
+                "STOP",
+            ),
+            get_parser=int,
+        )
+        """This command starts or stops acquisitions. When state is set to ON or RUN, a
+        new acquisition will be started. If the last acquisition was a single acquisition
+        sequence, a new single sequence acquisition will be started. If the last acquisition
+        was continuous, a new continuous acquisition will be started."""
+
+        self.stop_after: Parameter = self.add_parameter(
+            "stop_after",
+            get_cmd="ACQuire:STOPAfter?",
+            set_cmd="ACQuire:STOPAfter {{}}",
+            vals=Enum("SEQUENCE", "RUNSTOP"),
+        )
+
+
 class TektronixDPOTrigger(InstrumentChannel):
     """
     Submodule for trigger setup.
