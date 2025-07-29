@@ -94,9 +94,14 @@ class TektronixDPO7000xx(VisaInstrument):
             "delayed_trigger",
             TektronixDPOTrigger(self, "delayed_trigger", delayed_trigger=True),
         )
-        """Instrument module delayed_trigger"""
+        """Instrument module acquisition"""
         self.acquisition: TektronixDPOAcquisition = self.add_submodule(
             "acquisition", TektronixDPOAcquisition(self, "acquisition")
+        )
+
+        """Instrument module cursor"""
+        self.cursor: TektronixDPOCursor = self.add_submodule(
+            "cursor", TektronixDPOCursor(self, "cursor")
         )
 
         measurement_list = ChannelList(self, "measurement", TektronixDPOMeasurement)
@@ -452,6 +457,15 @@ class TektronixDPOChannel(InstrumentChannel):
             "waveform", TektronixDPOWaveform(self, "waveform", self._identifier)
         )
 
+        self.coupling: Parameter = self.add_parameter(
+            "coupling",
+            get_cmd=f"{self._identifier}:COUPling?",
+            set_cmd=f"{self._identifier}:COUPling {{}}",
+            vals=Enum("AC", "DC", "DCREJECT" "GND"),
+            get_parser=str,
+        )
+        """Parameter coupling: 'AC', 'DC', 'DCREJECT', 'GND'"""
+
         self.scale: Parameter = self.add_parameter(
             "scale",
             get_cmd=f"{self._identifier}:SCA?",
@@ -459,7 +473,7 @@ class TektronixDPOChannel(InstrumentChannel):
             get_parser=float,
             unit="V/div",
         )
-        """Parameter scale"""
+        """Parameter scale V/div"""
 
         self.offset: Parameter = self.add_parameter(
             "offset",
@@ -468,16 +482,16 @@ class TektronixDPOChannel(InstrumentChannel):
             get_parser=float,
             unit="V",
         )
-        """Parameter offset"""
+        """Parameter offset voltage"""
 
         self.position: Parameter = self.add_parameter(
             "position",
             get_cmd=f"{self._identifier}:POS?",
             set_cmd=f"{self._identifier}:POS {{}}",
             get_parser=float,
-            unit="V",
+            unit="div",
         )
-        """Parameter position"""
+        """Parameter position [-8, 8] divisions"""
 
         self.termination: Parameter = self.add_parameter(
             "termination",
@@ -689,7 +703,7 @@ class TektronixDPOAcquisition(InstrumentChannel):
         self.mode: Parameter = self.add_parameter(
             "mode",
             get_cmd="ACQuire:MODe?",
-            set_cmd=f"ACQuire:MODe {{}}",
+            set_cmd="ACQuire:MODe {}",
             vals=Enum(
                 "sample",
                 "peakdetect",
@@ -1062,3 +1076,89 @@ class TektronixDPOMeasurementStatistics(InstrumentChannel):
 
     def reset(self) -> None:
         self.write("MEASUrement:STATIstics:COUNt RESEt")
+
+
+class TektronixDPOCursor(InstrumentChannel):
+    """
+    The cursor submodule allows you to set and retrieve
+    information regarding the cursor type, state, and
+    positions. The cursor can be used to measure
+    voltage and time differences between two points on
+    the waveform display.
+
+    Methods:
+        - function: Set or get the cursor type (e.g., horizontal bars, vertical bars, etc.)
+        - state: Set or get the cursor state (ON or OFF)
+        - x1: Set or get the x1 position of the cursor (in seconds)
+        - x2: Set or get the x2 position of the cursor (in seconds)
+        - y1: Set or get the y1 position of the cursor (in Volts)
+        - y2: Set or get the y2 position of the cursor (in Volts)
+    """
+
+    def __init__(
+        self,
+        parent: Instrument,
+        name: str,
+        **kwargs: "Unpack[InstrumentBaseKWArgs]",
+    ) -> None:
+        super().__init__(parent, name, **kwargs)
+
+        self.function: Parameter = self.add_parameter(
+            "function",
+            get_cmd="CURSOR:FUNCtion?",
+            set_cmd="CURSOR:FUNCtion {}",
+            vals=Enum(
+                "OFF",
+                "HBARS",
+                "VBARS",
+                "SCREEN",
+                "WAVEFORM",
+            ),
+            get_parser=str.lower,
+        )
+        """Cursor Type [OFF, HBARS, VBARS, SCREEN, WAVEFORM]"""
+
+        self.state: Parameter = self.add_parameter(
+            "state",
+            get_cmd="CURSOR:STATE?",
+            set_cmd="CURSOR:STATE {}",
+            vals=Enum("ON", "OFF"),
+            get_parser=str.lower,
+        )
+        """Cursor state [ON, OFF]"""
+
+        self.x1: Parameter = self.add_parameter(
+            "x1",
+            get_cmd="CURSOR:VBARS:POSITION1?",
+            set_cmd="CURSOR:VBARS:POSITION1 {}",
+            get_parser=float,
+            unit="s",
+        )
+        """Cursor x1 position in seconds"""
+
+        self.x2: Parameter = self.add_parameter(
+            "x2",
+            get_cmd="CURSOR:VBARS:POSITION2?",
+            set_cmd="CURSOR:VBARS:POSITION2 {}",
+            get_parser=float,
+            unit="s",
+        )
+        """Cursor x2 position in seconds"""
+
+        self.y1: Parameter = self.add_parameter(
+            "y1",
+            get_cmd="CURSOR:HBARS:POSITION1?",
+            set_cmd="CURSOR:HBARS:POSITION1 {}",
+            get_parser=float,
+            unit="V",
+        )
+        """Cursor y1 position in Volts"""
+
+        self.y2: Parameter = self.add_parameter(
+            "y2",
+            get_cmd="CURSOR:HBARS:POSITION2?",
+            set_cmd="CURSOR:HBARS:POSITION2 {}",
+            get_parser=float,
+            unit="V",
+        )
+        """Cursor y2 position in Volts"""
