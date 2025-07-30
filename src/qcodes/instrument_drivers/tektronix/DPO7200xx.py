@@ -104,6 +104,12 @@ class TektronixDPO7000xx(VisaInstrument):
             "cursor", TektronixDPOCursor(self, "cursor")
         )
 
+        """Instrument module measure immediate"""
+        self.measure_immediate: TektronixDPOMeasurementImmediate = self.add_submodule(
+            "measure_immediate",
+            TektronixDPOMeasurementImmediate(self, "measure_immediate"),
+        )
+
         measurement_list = ChannelList(self, "measurement", TektronixDPOMeasurement)
         for measurement_number in range(1, self.number_of_measurements):
             measurement_name = f"measurement{measurement_number}"
@@ -1076,6 +1082,75 @@ class TektronixDPOMeasurementStatistics(InstrumentChannel):
 
     def reset(self) -> None:
         self.write("MEASUrement:STATIstics:COUNt RESEt")
+
+
+class TektronixDPOMeasurementImmediate(InstrumentChannel):
+    """
+    The cursor submodule allows you to set and retrieve
+    information regarding the cursor type, state, and
+    positions. The cursor can be used to measure
+    voltage and time differences between two points on
+    the waveform display.
+
+    Methods:
+        - function: Set or get the cursor type (e.g., horizontal bars, vertical bars, etc.)
+        - state: Set or get the cursor state (ON or OFF)
+        - x1: Set or get the x1 position of the cursor (in seconds)
+        - x2: Set or get the x2 position of the cursor (in seconds)
+        - y1: Set or get the y1 position of the cursor (in Volts)
+        - y2: Set or get the y2 position of the cursor (in Volts)
+    """
+
+    def __init__(
+        self,
+        parent: Instrument,
+        name: str,
+        **kwargs: "Unpack[InstrumentBaseKWArgs]",
+    ) -> None:
+        super().__init__(parent, name, **kwargs)
+
+        self.gating: Parameter = self.add_parameter(
+            "gating",
+            get_cmd="MEASUrement:GATing?",
+            set_cmd="MEASUrement:GATing {}",
+            vals=Enum("ON", "OFF", "ZOOM1", "ZOOM2", "ZOOM3", "ZOOM4", "CURSOR"),
+        )
+        self.source1: Parameter = self.add_parameter(
+            "source1",
+            get_cmd="MEASUrement:IMMed:SOUrce1?",
+            set_cmd="MEASUrement:IMMed:SOUrce1 {}",
+            vals=Enum(*TektronixDPOWaveform.valid_identifiers),
+        )
+
+        self.source2: Parameter = self.add_parameter(
+            "source2",
+            get_cmd="MEASUrement:IMMed:SOUrce2?",
+            set_cmd="MEASUrement:IMMed:SOUrce2 {}",
+            vals=Enum(*TektronixDPOWaveform.valid_identifiers),
+        )
+
+        self.type: Parameter = self.add_parameter(
+            "type",
+            get_cmd="MEASUrement:IMMed:TYPE?",
+            set_cmd="MEASUrement:IMMed:TYPE {}",
+            vals=Enum(
+                "MEAN",
+            ),
+            get_parser=str.lower,
+        )
+        """Cursor Type [OFF, HBARS, VBARS, SCREEN, WAVEFORM]"""
+
+        self.units: Parameter = self.add_parameter(
+            "units",
+            get_cmd="MEASUrement:IMMed:UNITS?",
+            get_parser=strip_quotes,
+        )
+
+        self.value: Parameter = self.add_parameter(
+            "value",
+            get_cmd="MEASUrement:IMMed:VALue?",
+            get_parser=float,
+        )
 
 
 class TektronixDPOCursor(InstrumentChannel):
