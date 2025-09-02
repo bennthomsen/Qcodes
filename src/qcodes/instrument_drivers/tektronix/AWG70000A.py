@@ -199,10 +199,10 @@ class Tektronix70000AWGChannel(InstrumentChannel):
             vals=vals.Ints(0, 1),
             get_parser=int,
         )
-        """Parameter state"""
+        """Channel State: (OFF: 0, ON: 1)"""
 
-        self.waiting_value: Parameter = self.add_parameter(
-            "waiting_value",
+        self.hold: Parameter = self.add_parameter(
+            "hold",
             label=f"Channel {channel} hold value",
             get_cmd=f"OUTPut{channel}:WVALUE:ANALOG:STATE?",
             set_cmd=f"OUTPut{channel}:WVALUE:ANALOG:STATE {{}}",
@@ -212,7 +212,8 @@ class Tektronix70000AWGChannel(InstrumentChannel):
             },
         )
         """ the output condition of a waveform of the specified
-          channel while the instrument is in the waiting-for-trigger state"""
+          channel to hold while the instrument is in the waiting-for-trigger state.
+          ZERO = 0V, FIRST = first value of next sequence"""
 
         ##################################################
         # FGEN PARAMETERS
