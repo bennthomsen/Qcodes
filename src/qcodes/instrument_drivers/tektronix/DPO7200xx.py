@@ -738,7 +738,11 @@ class TektronixDPOAcquisition(InstrumentChannel):
         """This command starts or stops acquisitions. When state is set to ON or RUN, a
         new acquisition will be started. If the last acquisition was a single acquisition
         sequence, a new single sequence acquisition will be started. If the last acquisition
-        was continuous, a new continuous acquisition will be started."""
+        was continuous, a new continuous acquisition will be started.
+        
+        Args:
+            state: 'ON', 'OFF', 'RUN', or 'STOP'
+        """
 
         self.stop_after: Parameter = self.add_parameter(
             "stop_after",
@@ -747,6 +751,10 @@ class TektronixDPOAcquisition(InstrumentChannel):
             vals=Enum("SEQUENCE", "RUNSTOP"),
             get_parser=str.lower,
         )
+        """This command sets or queries whether the instrument continually acquires
+        acquisitions or acquires a single sequence. Pressing SINGLE on the front
+        panel button is equivalent to sending these commands: ACQUIRE:STOPAFTER
+        SEQUENCE and ACQUIRE:STATE 1."""
 
 
 class TektronixDPOTrigger(InstrumentChannel):
@@ -783,6 +791,42 @@ class TektronixDPOTrigger(InstrumentChannel):
             trigger_types.extend(
                 ["video", "i2c", "can", "spi", "communication", "serial", "rs232"]
             )
+
+        self.ready: Parameter = self.add_parameter(
+            "ready",
+            get_cmd=f"TRIGger:{self._identifier}:READY?",
+            get_parser=str.lower,
+        )
+        """Indicates whether the trigger system is ready to accept a trigger.
+        A value of 1 indicates that the trigger system is ready to accept a trigger.
+        A value of 0 indicates that the trigger system is not ready to accept a trigger.
+        """
+
+        self.state: Parameter = self.add_parameter(
+            "state",
+            get_cmd="TRIGger:STATe?",
+            get_parser=str.lower,
+        )
+        """Gets the current Trigger state:
+
+            ARMED indicates that the instrument is acquiring pretrigger information.
+
+            AUTO indicates that the instrument is in the automatic mode and acquires data
+            even in the absence of a trigger.
+
+            DPO indicates that the instrument is in DPO mode.
+
+            PARTIAL indicates that the A trigger has occurred and the instrument is waiting
+            for the B trigger to occur.
+
+            READY indicates that all pretrigger information is acquired and that the instrument
+            is ready to accept a trigger.
+
+            SAVE indicates that the instrument is in save mode and is not acquiring data.
+
+            TRIGGER indicates that the instrument triggered and is acquiring the post trigger
+            information.
+        """
 
         self.type: Parameter = self.add_parameter(
             "type",
