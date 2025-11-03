@@ -601,6 +601,14 @@ class TektronixAWG70000Base(VisaInstrument):
         )
         """Parameter all_output_off"""
 
+        self.force_jump: Parameter = self.add_parameter(
+            "force_jump",
+            label="Force Jump",
+            set_cmd="SOURCE1:JUMP:FORCE {}",
+            vals=vals.Ints(1, 16383),
+        )
+        """Parameter force_jump"""
+
         add_channel_list = self.num_channels > 2
         # We deem 2 channels too few for a channel list
         if add_channel_list:
@@ -632,6 +640,22 @@ class TektronixAWG70000Base(VisaInstrument):
         self.current_directory(self.wfmxFileFolder)
 
         self.connect_message()
+
+    def set_event_jump(
+        self, sequence_name: str, current_step: int, next_step: int
+    ) -> None:
+        """
+        Set event jump for a given step in the sequence
+
+        Args:
+            sequence_name: The name of the sequence
+            current_step: The step number in the sequence (1-indexed)
+            next_step: The step number to jump to (1-indexed)
+        """
+
+        self.write(
+            f"SLISt:SEQuence:STEP{current_step}:EJUMp {sequence_name}, {next_step}"
+        )
 
     def force_triggerA(self) -> None:
         """
