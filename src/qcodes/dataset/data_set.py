@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy
 import numpy.typing as npt
 from tqdm.auto import trange
+from typing_extensions import deprecated
 
 import qcodes
 from qcodes.dataset.data_set_protocol import (
@@ -84,6 +85,7 @@ from qcodes.dataset.sqlite.query_helpers import (
 from qcodes.utils import (
     NumpyJSONEncoder,
 )
+from qcodes.utils.deprecate import QCoDeSDeprecationWarning
 
 from .data_set_cache import DataSetCacheWithDBBackend
 from .data_set_in_memory import DataSetInMem, load_from_file
@@ -95,8 +97,9 @@ from .exporters.export_to_pandas import (
     load_to_dataframe_dict,
 )
 from .exporters.export_to_xarray import (
-    load_to_xarray_dataarray_dict,
+    load_to_xarray_dataarray_dict,  # pyright: ignore[reportDeprecated]
     load_to_xarray_dataset,
+    load_to_xarray_dataset_dict,
     xarray_to_h5netcdf_with_complex_numbers,
 )
 from .subscriber import _Subscriber
@@ -107,9 +110,9 @@ if TYPE_CHECKING:
     import pandas as pd
     import xarray as xr
 
-    from qcodes.dataset.descriptions.param_spec import ParamSpec, ParamSpecBase
+    from qcodes.dataset.descriptions.param_spec import ParamSpec
     from qcodes.dataset.descriptions.versioning.rundescribertypes import Shapes
-    from qcodes.parameters import ParameterBase
+    from qcodes.parameters import ParameterBase, ParamSpecBase
 
 
 log = logging.getLogger(__name__)
@@ -219,6 +222,7 @@ class DataSet(BaseDataSet):
         metadata: Mapping[str, Any] | None = None,
         shapes: Shapes | None = None,
         in_memory_cache: bool = True,
+        read_only: bool = False,
     ) -> None:
         """
         Create a new :class:`.DataSet` object. The object can either hold a new run or
@@ -251,9 +255,18 @@ class DataSet(BaseDataSet):
                 Ignored if ``run_id`` is provided.
             in_memory_cache: Should measured data be keep in memory
                 and available as part of the `dataset.cache` object.
+            read_only: whether to open the connection in read-only mode.
+                Only takes effect if `conn` is not given.
 
         """
-        self.conn = conn_from_dbpath_or_conn(conn, path_to_db)
+        if run_id is None and conn is None and read_only:
+            # raise valueerror here because if no run id, a new dataset will be created
+            # and it will be written to the database
+            raise ValueError(
+                "Cannot instantiate a dataset in read-only mode without a run_id provided"
+                " since a new dataset will be created."
+            )
+        self.conn = conn_from_dbpath_or_conn(conn, path_to_db, read_only=read_only)
 
         self._debug = False
         self.subscribers: dict[str, _Subscriber] = {}
@@ -553,7 +566,10 @@ class DataSet(BaseDataSet):
         self.conn = connect(path_to_db, self._debug)
 
     def set_interdependencies(
-        self, interdeps: InterDependencies_, shapes: Shapes | None = None
+        self,
+        interdeps: InterDependencies_,
+        shapes: Shapes | None = None,
+        override: bool = False,
     ) -> None:
         """
         Set the interdependencies object (which holds all added
@@ -566,7 +582,7 @@ class DataSet(BaseDataSet):
                 f"Wrong input type. Expected InterDepencies_, got {type(interdeps)}"
             )
 
-        if not self.pristine:
+        if not self.pristine and not override:
             mssg = "Can not set interdependencies on a DataSet that has been started."
             raise RuntimeError(mssg)
         self._rundescriber = RunDescriber(interdeps, shapes=shapes)
@@ -585,7 +601,6 @@ class DataSet(BaseDataSet):
         """
 
         self._metadata[tag] = metadata
-
         # `add_data_to_dynamic_columns` is not atomic by itself, hence using `atomic`
         with atomic(self.conn) as conn:
             add_data_to_dynamic_columns(conn, self.run_id, {tag: metadata})
@@ -955,6 +970,10 @@ class DataSet(BaseDataSet):
         datadict = self.get_parameter_data(*params, start=start, end=end)
         return load_to_concatenated_dataframe(datadict, self.description.interdeps)
 
+    @deprecated(
+        "to_xarray_dataarray_dict is deprecated, use to_xarray_dataset_dict instead",
+        category=QCoDeSDeprecationWarning,
+    )
     def to_xarray_dataarray_dict(
         self,
         *params: str | ParamSpec | ParameterBase,
@@ -1016,7 +1035,74 @@ class DataSet(BaseDataSet):
 
         """
         data = self.get_parameter_data(*params, start=start, end=end)
-        datadict = load_to_xarray_dataarray_dict(
+        datadict = load_to_xarray_dataarray_dict(  # pyright: ignore[reportDeprecated]
+            self, data, use_multi_index=use_multi_index
+        )
+
+        return datadict
+
+    def to_xarray_dataset_dict(
+        self,
+        *params: str | ParamSpec | ParameterBase,
+        start: int | None = None,
+        end: int | None = None,
+        use_multi_index: Literal["auto", "always", "never"] = "auto",
+    ) -> dict[str, xr.Dataset]:
+        """
+        Returns the values stored in the :class:`.DataSet` for the specified parameters
+        and their dependencies as a dict of :py:class:`xr.DataSet` s
+        Each element in the dict is indexed by the names of the requested
+        parameters.
+
+        If no parameters are supplied data will be be
+        returned for all parameters in the :class:`.DataSet` that are not them self
+        dependencies of other parameters.
+
+        If provided, the start and end arguments select a range of results
+        by result count (index). If the range is empty - that is, if the end is
+        less than or equal to the start, or if start is after the current end
+        of the :class:`.DataSet` - then a dict of empty :py:class:`xr.Dataset` s is
+        returned.
+
+        The dependent parameters of the Dataset are normally used as coordinates of the
+        XArray dataframe. However if non unique values are found for the dependent parameter
+        values we will fall back to using an index as coordinates.
+
+        Args:
+            *params: string parameter names, QCoDeS Parameter objects, and
+                ParamSpec objects. If no parameters are supplied data for
+                all parameters that are not a dependency of another
+                parameter will be returned.
+            start: start value of selection range (by result count); ignored
+                if None
+            end: end value of selection range (by results count); ignored if
+                None
+            use_multi_index: Should the data be exported using a multi index
+                rather than regular cartesian indexes. With regular cartesian
+                coordinates, the xarray dimensions are calculated from the sets or all
+                values along the setpoint axis of the QCoDeS dataset. Any position
+                in this grid not corresponding to a measured value will be filled
+                with a placeholder (typically NaN) potentially creating a sparse
+                dataset with significant storage overhead.
+                Multi index avoids this and is therefor better
+                suited for data that is known to not be on a grid.
+                If set to "auto" multi index will be used if projecting the data onto
+                a grid requires filling non measured values with NaN  and the shapes
+                of the data has not been set in the run description.
+
+        Returns:
+            Dictionary from requested parameter names to :py:class:`xr.Dataset` s
+            with the requested parameter(s) as a column(s) and coordinates
+            formed by the dependencies.
+
+        Example:
+            Return a dict of xr.Dataset with
+
+                dataset_dict = ds.to_xarray_dataset_dict()
+
+        """
+        data = self.get_parameter_data(*params, start=start, end=end)
+        datadict = load_to_xarray_dataset_dict(
             self, data, use_multi_index=use_multi_index
         )
 
@@ -1567,6 +1653,7 @@ def load_by_run_spec(
     location: int | None = None,
     work_station: int | None = None,
     conn: AtomicConnection | None = None,
+    read_only: bool = False,
 ) -> DataSetProtocol:
     """
     Load a run from one or more pieces of runs specification. All
@@ -1591,6 +1678,8 @@ def load_by_run_spec(
         work_station: The workstation assigned as part of the GUID.
         conn: An optional connection to the database. If no connection is
           supplied a connection to the default database will be opened.
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Raises:
         NameError: if no run or more than one run with the given specification
@@ -1602,7 +1691,7 @@ def load_by_run_spec(
         specification.
 
     """
-    internal_conn = conn or connect(get_DB_location())
+    internal_conn = conn or connect(get_DB_location(), read_only=read_only)
     d: DataSetProtocol | None = None
     try:
         guids = get_guids_by_run_spec(
@@ -1646,6 +1735,7 @@ def get_guids_by_run_spec(
     location: int | None = None,
     work_station: int | None = None,
     conn: AtomicConnection | None = None,
+    read_only: bool = False,
 ) -> list[str]:
     """
     Get a list of matching guids from one or more pieces of runs specification. All
@@ -1663,12 +1753,14 @@ def get_guids_by_run_spec(
         work_station: The workstation assigned as part of the GUID.
         conn: An optional connection to the database. If no connection is
           supplied a connection to the default database will be opened.
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Returns:
         List of guids matching the run spec.
 
     """
-    internal_conn = conn or connect(get_DB_location())
+    internal_conn = conn or connect(get_DB_location(), read_only=read_only)
     try:
         guids = _query_guids_from_run_spec(
             internal_conn,
@@ -1687,7 +1779,9 @@ def get_guids_by_run_spec(
     return matched_guids
 
 
-def load_by_id(run_id: int, conn: AtomicConnection | None = None) -> DataSetProtocol:
+def load_by_id(
+    run_id: int, conn: AtomicConnection | None = None, read_only: bool = False
+) -> DataSetProtocol:
     """
     Load a dataset by run id
 
@@ -1707,6 +1801,8 @@ def load_by_id(run_id: int, conn: AtomicConnection | None = None) -> DataSetProt
     Args:
         run_id: run id of the dataset
         conn: connection to the database to load from
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Returns:
         :class:`qcodes.dataset.data_set.DataSet` or
@@ -1715,7 +1811,7 @@ def load_by_id(run_id: int, conn: AtomicConnection | None = None) -> DataSetProt
     """
     if run_id is None:
         raise ValueError("run_id has to be a positive integer, not None.")
-    internal_conn = conn or connect(get_DB_location())
+    internal_conn = conn or connect(get_DB_location(), read_only=read_only)
     d: DataSetProtocol | None = None
 
     try:
@@ -1733,7 +1829,9 @@ def load_by_id(run_id: int, conn: AtomicConnection | None = None) -> DataSetProt
     return d
 
 
-def load_by_guid(guid: str, conn: AtomicConnection | None = None) -> DataSetProtocol:
+def load_by_guid(
+    guid: str, conn: AtomicConnection | None = None, read_only: bool = False
+) -> DataSetProtocol:
     """
     Load a dataset by its GUID
 
@@ -1748,6 +1846,8 @@ def load_by_guid(guid: str, conn: AtomicConnection | None = None) -> DataSetProt
     Args:
         guid: guid of the dataset
         conn: connection to the database to load from
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Returns:
         :class:`qcodes.dataset.data_set.DataSet` or
@@ -1758,7 +1858,7 @@ def load_by_guid(guid: str, conn: AtomicConnection | None = None) -> DataSetProt
         RuntimeError: if several runs with the given GUID are found
 
     """
-    internal_conn = conn or connect(get_DB_location())
+    internal_conn = conn or connect(get_DB_location(), read_only=read_only)
     d: DataSetProtocol | None = None
 
     # this function raises a RuntimeError if more than one run matches the GUID
@@ -1773,7 +1873,10 @@ def load_by_guid(guid: str, conn: AtomicConnection | None = None) -> DataSetProt
 
 
 def load_by_counter(
-    counter: int, exp_id: int, conn: AtomicConnection | None = None
+    counter: int,
+    exp_id: int,
+    conn: AtomicConnection | None = None,
+    read_only: bool = False,
 ) -> DataSetProtocol:
     """
     Load a dataset given its counter in a given experiment
@@ -1795,6 +1898,8 @@ def load_by_counter(
         exp_id: id of the experiment where to look for the dataset
         conn: connection to the database to load from. If not provided, a
           connection to the DB file specified in the config is made
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Returns:
         :class:`DataSet` or
@@ -1802,7 +1907,7 @@ def load_by_counter(
         the given experiment
 
     """
-    internal_conn = conn or connect(get_DB_location())
+    internal_conn = conn or connect(get_DB_location(), read_only=read_only)
     d: DataSetProtocol | None = None
 
     # this function raises a RuntimeError if more than one run matches the GUID
@@ -1906,7 +2011,7 @@ def new_data_set(
 
 
 def generate_dataset_table(
-    guids: Sequence[str], conn: AtomicConnection | None = None
+    guids: Sequence[str], conn: AtomicConnection | None = None, read_only: bool = False
 ) -> str:
     """
     Generate an ASCII art table of information about the runs attached to the
@@ -1915,6 +2020,8 @@ def generate_dataset_table(
     Args:
         guids: Sequence of one or more guids
         conn: An AtomicConnection object with a connection to the database.
+        read_only: whether to open the connection in read-only mode.
+            Only takes effect if `conn` is not given.
 
     Returns: ASCII art table of information about the supplied guids.
 
@@ -1931,7 +2038,7 @@ def generate_dataset_table(
     )
     table = []
     for guid in guids:
-        ds = load_by_guid(guid, conn=conn)
+        ds = load_by_guid(guid, conn=conn, read_only=read_only)
         parsed_guid = parse_guid(guid)
         table.append(
             [

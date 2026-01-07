@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from qcodes.dataset.data_set_protocol import (
     SPECS,
@@ -40,7 +41,7 @@ from qcodes.dataset.sqlite.queries import (
     update_parent_datasets,
     update_run_description,
 )
-from qcodes.utils import NumpyJSONEncoder
+from qcodes.utils import NumpyJSONEncoder, QCoDeSDeprecationWarning
 
 from .data_set_cache import DataSetCacheDeferred, DataSetCacheInMem
 from .dataset_helpers import _add_run_to_runs_table
@@ -55,8 +56,9 @@ if TYPE_CHECKING:
     import pandas as pd
     import xarray as xr
 
-    from qcodes.dataset.descriptions.param_spec import ParamSpec, ParamSpecBase
+    from qcodes.dataset.descriptions.param_spec import ParamSpec
     from qcodes.dataset.descriptions.versioning.rundescribertypes import Shapes
+    from qcodes.parameters import ParamSpecBase
 
     from ..parameters import ParameterBase
 
@@ -284,10 +286,16 @@ class DataSetInMem(BaseDataSet):
             )
             if completed_timestamp_raw is not None:
                 completed_timestamp_raw = float(completed_timestamp_raw)
+                # Convert sentinel value back to None
+                if completed_timestamp_raw == -1:
+                    completed_timestamp_raw = None
 
             run_timestamp_raw = getattr(loaded_data, "run_timestamp_raw", None)
             if run_timestamp_raw is not None:
                 run_timestamp_raw = float(run_timestamp_raw)
+                # Convert sentinel value back to None
+                if run_timestamp_raw == -1:
+                    run_timestamp_raw = None
 
             ds = cls(
                 run_id=run_id,
@@ -740,7 +748,10 @@ class DataSetInMem(BaseDataSet):
         self._parent_dataset_links = links
 
     def _set_interdependencies(
-        self, interdeps: InterDependencies_, shapes: Shapes | None = None
+        self,
+        interdeps: InterDependencies_,
+        shapes: Shapes | None = None,
+        override: bool = False,
     ) -> None:
         """
         Set the interdependencies object (which holds all added
@@ -753,7 +764,7 @@ class DataSetInMem(BaseDataSet):
                 f"Wrong input type. Expected InterDepencies_, got {type(interdeps)}"
             )
 
-        if not self.pristine:
+        if not self.pristine and not override:
             mssg = "Can not set interdependencies on a DataSet that has been started."
             raise RuntimeError(mssg)
         self._rundescriber = RunDescriber(interdeps, shapes=shapes)
@@ -842,6 +853,10 @@ class DataSetInMem(BaseDataSet):
         else:
             return None
 
+    @deprecated(
+        "to_xarray_dataarray_dict is deprecated, use to_xarray_dataset_dict instead",
+        category=QCoDeSDeprecationWarning,
+    )
     def to_xarray_dataarray_dict(
         self,
         *params: str | ParamSpec | ParameterBase,
@@ -850,7 +865,17 @@ class DataSetInMem(BaseDataSet):
         use_multi_index: Literal["auto", "always", "never"] = "auto",
     ) -> dict[str, xr.DataArray]:
         self._warn_if_set(*params, start=start, end=end)
-        return self.cache.to_xarray_dataarray_dict()
+        return self.cache.to_xarray_dataarray_dict()  # pyright: ignore[reportDeprecated]
+
+    def to_xarray_dataset_dict(
+        self,
+        *params: str | ParamSpec | ParameterBase,
+        start: int | None = None,
+        end: int | None = None,
+        use_multi_index: Literal["auto", "always", "never"] = "auto",
+    ) -> dict[str, xr.Dataset]:
+        self._warn_if_set(*params, start=start, end=end)
+        return self.cache.to_xarray_dataset_dict(use_multi_index=use_multi_index)
 
     def to_xarray_dataset(
         self,

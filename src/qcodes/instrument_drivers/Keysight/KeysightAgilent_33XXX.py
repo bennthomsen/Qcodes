@@ -370,6 +370,91 @@ class Keysight33xxx(KeysightErrorQueueMixin, VisaInstrument):
         name: str,
         address: str,
         silent: bool = False,
+        dynamic_channels: bool = True,
+        **kwargs: "Unpack[VisaInstrumentKWArgs]",
+    ):
+        """
+        Args:
+            name: The name of the instrument used internally
+                by QCoDeS. Must be unique.
+            address: The VISA resource name.
+            silent: If True, no connect message is printed.
+            dynamic_channels: If True, channels are created
+                dynamically based on the model queried from the
+                instrument.
+            **kwargs: kwargs are forwarded to base class.
+
+        """
+
+        super().__init__(name, address, **kwargs)
+        self.model = self.IDN()["model"]
+
+        if self.model not in self.__class__.__name__:
+            log.warning(
+                f"The driver class name {self.__class__.__name__} does not match "
+                f"the detected model {self.model}. This might lead to "
+                "unexpected behavior including incorrect number of channels assigned."
+            )
+
+        #######################################################################
+        # Here go all model specific traits
+
+        # TODO: Fill out this dict with all models
+        no_of_channels = {
+            "33210A": 1,
+            "33250A": 1,
+            "33511B": 1,
+            "33512B": 2,
+            "33522B": 2,
+            "33611A": 1,
+            "33622A": 2,
+            "33510B": 2,
+        }
+
+        self._max_freqs = {
+            "33210A": 10e6,
+            "33511B": 20e6,
+            "33512B": 20e6,
+            "33250A": 80e6,
+            "33522B": 30e6,
+            "33611A": 80e6,
+            "33622A": 120e6,
+            "33510B": 20e6,
+        }
+
+        self.num_channels = no_of_channels[self.model]
+
+        if dynamic_channels:
+            for i in range(1, self.num_channels + 1):
+                channel = Keysight33xxxOutputChannel(self, f"ch{i}", i)
+                self.add_submodule(f"ch{i}", channel)
+
+        sync = Keysight33xxxSyncChannel(self, "sync")
+        self.sync: Keysight33xxxSyncChannel = self.add_submodule("sync", sync)
+        """
+        Sync module
+        """
+
+        self.add_function("force_trigger", call_cmd="*TRG")
+
+        self.add_function("sync_channel_phases", call_cmd="PHAS:SYNC")
+
+        if not silent:
+            self.connect_message()
+
+
+class Keysight33xxxSingleChannel(Keysight33xxx):
+    """
+    Subclass for 1 channel Keysight/Agilent 33XXX waveform generators.
+
+    Not to be instantiated directly.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        address: str,
+        silent: bool = False,
         **kwargs: "Unpack[VisaInstrumentKWArgs]",
     ):
         """
@@ -382,45 +467,53 @@ class Keysight33xxx(KeysightErrorQueueMixin, VisaInstrument):
 
         """
 
-        super().__init__(name, address, **kwargs)
-        self.model = self.IDN()["model"]
+        super().__init__(name, address, silent=silent, dynamic_channels=False, **kwargs)
 
-        #######################################################################
-        # Here go all model specific traits
+        self.ch1: Keysight33xxxOutputChannel = self.add_submodule(
+            "ch1", Keysight33xxxOutputChannel(self, "ch1", 1)
+        )
+        """
+        Output channel 1
+        """
 
-        # TODO: Fill out this dict with all models
-        no_of_channels = {
-            "33210A": 1,
-            "33250A": 1,
-            "33511B": 1,
-            "33512B": 2,
-            "33522B": 2,
-            "33622A": 2,
-            "33510B": 2,
-        }
 
-        self._max_freqs = {
-            "33210A": 10e6,
-            "33511B": 20e6,
-            "33512B": 20e6,
-            "33250A": 80e6,
-            "33522B": 30e6,
-            "33622A": 120e6,
-            "33510B": 20e6,
-        }
+class Keysight33xxxDualChannels(Keysight33xxx):
+    """
+    Subclass for 2 channel Keysight/Agilent 33XXX waveform generators.
 
-        self.num_channels = no_of_channels[self.model]
+    Not to be instantiated directly.
+    """
 
-        for i in range(1, self.num_channels + 1):
-            channel = Keysight33xxxOutputChannel(self, f"ch{i}", i)
-            self.add_submodule(f"ch{i}", channel)
+    def __init__(
+        self,
+        name: str,
+        address: str,
+        silent: bool = False,
+        **kwargs: "Unpack[VisaInstrumentKWArgs]",
+    ):
+        """
+        Args:
+            name: The name of the instrument used internally
+                by QCoDeS. Must be unique.
+            address: The VISA resource name.
+            silent: If True, no connect message is printed.
+            **kwargs: kwargs are forwarded to base class.
 
-        sync = Keysight33xxxSyncChannel(self, "sync")
-        self.add_submodule("sync", sync)
+        """
 
-        self.add_function("force_trigger", call_cmd="*TRG")
+        super().__init__(name, address, silent=silent, dynamic_channels=False, **kwargs)
 
-        self.add_function("sync_channel_phases", call_cmd="PHAS:SYNC")
+        self.num_channels = 2
 
-        if not silent:
-            self.connect_message()
+        self.ch1: Keysight33xxxOutputChannel = self.add_submodule(
+            "ch1", Keysight33xxxOutputChannel(self, "ch1", 1)
+        )
+        """
+        Output channel 1
+        """
+        self.ch2: Keysight33xxxOutputChannel = self.add_submodule(
+            "ch2", Keysight33xxxOutputChannel(self, "ch2", 2)
+        )
+        """
+        Output channel 2
+        """
