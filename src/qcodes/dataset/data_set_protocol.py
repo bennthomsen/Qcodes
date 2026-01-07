@@ -19,7 +19,7 @@ import numpy as np
 import numpy.typing as npt
 
 from qcodes.dataset.descriptions.dependencies import InterDependencies_
-from qcodes.dataset.descriptions.param_spec import ParamSpec, ParamSpecBase
+from qcodes.dataset.descriptions.param_spec import ParamSpec
 from qcodes.dataset.export_config import (
     DataExportType,
     get_data_export_name_elements,
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from qcodes.dataset.descriptions.rundescriber import RunDescriber
     from qcodes.dataset.descriptions.versioning.rundescribertypes import Shapes
     from qcodes.dataset.linked_datasets.links import Link
-    from qcodes.parameters import ParameterBase
+    from qcodes.parameters import ParameterBase, ParamSpecBase
 
     from .data_set_cache import DataSetCache
     from .exporters.export_info import ExportInfo
@@ -232,6 +232,14 @@ class DataSetProtocol(Protocol):
         end: int | None = None,
         use_multi_index: Literal["auto", "always", "never"] = "auto",
     ) -> dict[str, xr.DataArray]: ...
+
+    def to_xarray_dataset_dict(
+        self,
+        *params: str | ParamSpec | ParameterBase,
+        start: int | None = None,
+        end: int | None = None,
+        use_multi_index: Literal["auto", "always", "never"] = "auto",
+    ) -> dict[str, xr.Dataset]: ...
 
     def to_xarray_dataset(
         self,

@@ -11,6 +11,7 @@ from .Keysight_33250a import Keysight33250A
 from .Keysight_33511b import Keysight33511B
 from .Keysight_33512b import Keysight33512B
 from .Keysight_33522b import Keysight33522B
+from .Keysight_33611a import Keysight33611A
 from .Keysight_33622a import Keysight33622A
 from .Keysight_34410A_submodules import Keysight34410A
 from .Keysight_34411A_submodules import Keysight34411A
@@ -40,11 +41,14 @@ from .Keysight_N9030B import (
     KeysightN9030BPhaseNoiseMode,
     KeysightN9030BSpectrumAnalyzerMode,
 )
+from .Keysight_P5002B import KeysightP5002B
 from .Keysight_P5004B import KeysightP5004B
 from .Keysight_P9374A import KeysightP9374A
 from .KeysightAgilent_33XXX import (
     Keysight33xxx,
+    Keysight33xxxDualChannels,
     Keysight33xxxOutputChannel,
+    Keysight33xxxSingleChannel,
     Keysight33xxxSyncChannel,
 )
 from .keysightb1500.KeysightB1500_base import KeysightB1500
@@ -72,7 +76,9 @@ from .private.Keysight_344xxA_submodules import (
 
 __all__ = [
     "Keysight33xxx",
+    "Keysight33xxxDualChannels",
     "Keysight33xxxOutputChannel",
+    "Keysight33xxxSingleChannel",
     "Keysight33xxxSyncChannel",
     "Keysight344xxA",
     "Keysight344xxADisplay",
@@ -83,6 +89,7 @@ __all__ = [
     "Keysight33511B",
     "Keysight33512B",
     "Keysight33522B",
+    "Keysight33611A",
     "Keysight33622A",
     "Keysight34410A",
     "Keysight34411A",
@@ -133,6 +140,7 @@ __all__ = [
     "KeysightN9030B",
     "KeysightN9030BPhaseNoiseMode",
     "KeysightN9030BSpectrumAnalyzerMode",
+    "KeysightP5002B",
     "KeysightP5004B",
     "KeysightP9374A",
     "KeysightPNABase",

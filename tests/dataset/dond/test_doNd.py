@@ -8,7 +8,6 @@ from functools import partial
 from typing import assert_type
 
 import hypothesis.strategies as hst
-import matplotlib
 import matplotlib.axes
 import matplotlib.colorbar
 import matplotlib.pyplot as plt
@@ -1404,7 +1403,7 @@ def test_together_sweep_validation(n_points_1, n_points_2) -> None:
 
 def test_empty_together_sweep_raises() -> None:
     with pytest.raises(
-        ValueError, match="A TogetherSweep must contain at least one sweep."
+        ValueError, match=re.escape("A TogetherSweep must contain at least one sweep.")
     ):
         TogetherSweep()
 
