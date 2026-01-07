@@ -24,13 +24,24 @@ jobs:
           git remote add upstream https://github.com/QCoDeS/Qcodes.git
           git fetch upstream
 
-      - name: Merge upstream changes
+      - name: Merge upstream changes to main
         run: |
           git checkout main
           git merge upstream/main
 
-      - name: Push changes to origin
+      - name: Push main branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git push origin main
+
+      - name: Merge upstream changes to tek
+        run: |
+          git checkout tek
+          git merge upstream/tek
+
+      - name: Push tek branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push origin tek
