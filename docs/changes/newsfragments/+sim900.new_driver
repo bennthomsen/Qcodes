@@ -1,0 +1,3 @@
+Add drivers for the Stanford Research Systems SIM900 mainframe and SIM960 analog
+PID controller, including validated QCoDeS parameters, module communication,
+and a :doc:`usage example </examples/driver_examples/Qcodes example with Stanford SIM900 and SIM960>`.
