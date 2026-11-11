@@ -1,0 +1,5 @@
+Add Teledyne LeCroy T3PS30051P and T3PS3000 DC power supply drivers with typed
+QCoDeS parameters, validated voltage and current limits, output measurements,
+and example notebooks. The T3PS30051P avoids unsupported ``*IDN?`` queries and
+waits one second before reading query responses. The T3PS3000 driver also supports channel tracking,
+timer sequences, and LAN configuration.
